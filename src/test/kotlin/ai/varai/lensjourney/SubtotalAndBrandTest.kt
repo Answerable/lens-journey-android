@@ -269,8 +269,8 @@ class SubtotalAndBrandTest {
     }
 
     @Test
-    fun `version is 0 point 2 point 0 and matches gradle, the VERSION file and the CHANGELOG`() {
-        assertEquals("0.2.0", LensJourney.VERSION)
+    fun `version is 0 point 3 point 0 and matches gradle, the VERSION file and the CHANGELOG`() {
+        assertEquals("0.3.0", LensJourney.VERSION)
         val root = packageRoot
         assertTrue(Files.readString(root.resolve("build.gradle.kts")).contains("version = file(\"VERSION\").readText().trim()"), "Gradle must read its version from VERSION")
         assertEquals(LensJourney.VERSION, Files.readString(root.resolve("VERSION")).trim())

@@ -17,7 +17,10 @@ data class TransportRequest(
     val headers: Map<String, String> = emptyMap(),
     val body: ByteArray? = null,
     val contentType: String? = null,
-)
+) {
+    /** Header values carry the mobile key and the install token, so only the header names are printed. */
+    override fun toString() = "TransportRequest($method $path, headers=${headers.keys.sorted()}, body=${body?.size ?: 0} bytes)"
+}
 
 data class TransportResponse(val status: Int, val headers: Map<String, String>, val body: ByteArray)
 

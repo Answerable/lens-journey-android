@@ -41,6 +41,15 @@ class MalformedResponseException(message: String, status: Int, cause: Throwable)
 class BusyException(message: String = "Another journey operation is in progress") : LensJourneyException(message, code = "BUSY")
 class InvalidSelectionException(message: String = "The selection is not enabled for the current step") : LensJourneyException(message, code = "INVALID_SELECTION")
 class JourneyIncompleteException(message: String = "Journey must reach summary before finish") : LensJourneyException(message, code = "JOURNEY_INCOMPLETE")
+/** The mobile key or base URL is unusable, for example a secret `cs_` key (code `SECRET_KEY_IN_APP`) or a key that is not `cspk_` (`INVALID_MOBILE_KEY`). */
+class InvalidConfigurationException(message: String, code: String? = "INVALID_CONFIGURATION") : LensJourneyException(message, code = code)
+/**
+ * The install could not be attested: the provider failed (code `ATTESTATION_FAILED`, or `ATTESTATION_UNAVAILABLE` from a provider that
+ * knows the device cannot attest), or the server refused the attestation (HTTP 401, code `ATTESTATION_FAILED`).
+ */
+class AttestationException(message: String, code: String? = "ATTESTATION_FAILED", status: Int? = null, cause: Throwable? = null) : LensJourneyException(message, status, code, cause = cause)
+/** HTTP 403 `MOBILE_CHANNEL_DISABLED`: VARAi has switched the mobile channel off. */
+class MobileChannelDisabledException(message: String, code: String? = "MOBILE_CHANNEL_DISABLED") : LensJourneyException(message, 403, code)
 
 @Serializable
 internal data class ErrorEnvelope(

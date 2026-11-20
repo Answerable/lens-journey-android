@@ -4,14 +4,14 @@
 
 Pure Kotlin/JVM client for the server-driven Commerce Studio lens journey. It has no Android framework dependency and contains no lens rules and no API secret.
 
-**How the app is authenticated (0.3.0).** The app talks to VARAi directly, with an attested mobile publishable key (`cspk_...`). The merchant's platform prices the cart: the app hands the journey result (the configuration id and the `sessionId`) to the merchant's cart, and the merchant's platform prices it from its own catalogue (ADR-369). The app never prices anything and never holds a secret key. A secret key (`cs_...`) must never ship in an app, and the SDK refuses one.
+**How the app is authenticated (since 0.3.0).** The app talks to VARAi directly, with an attested mobile publishable key (`cspk_...`). The merchant's platform prices the cart: the app hands the journey result (the configuration id and the `sessionId`) to the merchant's cart, and the merchant's platform prices it from its own catalogue (ADR-369). The app never prices anything and never holds a secret key. A secret key (`cs_...`) must never ship in an app, and the SDK refuses one.
 
 ```kotlin
 // MobileKeyConfig throws InvalidConfigurationException for a secret cs_ key and for anything that is not cspk_.
 val mobile = MobileKeyConfig(
     mobileKey = appMobileKey,                      // "cspk_..." from your VARAi dashboard
     baseUrl = apiBaseUrl,                          // the VARAi API URL for your environment (https)
-    attestationProvider = PlayIntegrityProvider(context, cloudProjectNumber), // DebugAttestationProvider() only against staging
+    attestationProvider = PlayIntegrityProvider(context, cloudProjectNumber), // the staging variant uses DebugAttestationProvider (see below)
     installIdStore = PrefsInstallIdStore(context), // keep the install id across launches
 )
 val journey = LensJourney.mobile(JourneyConfig(currency = "USD", store = "us"), mobile)
@@ -64,7 +64,20 @@ class PlayIntegrityProvider(private val context: Context, private val cloudProje
 
 Throw `AttestationException` (or let the Play error propagate: any other exception is wrapped as one) when the device cannot attest. A device that fails attestation cannot start a journey: emulators and rooted devices are refused by design.
 
-**`DebugAttestationProvider` is for staging only.** It sends the challenge back unsigned. A production VARAi server refuses a debug binding when it is issued and again when it is used, so it works only against staging, test or development servers. Use it for emulator runs and CI against staging, and never ship it in a release build (for example put it in `debug/`).
+**`DebugAttestationProvider` is for staging only, and it is not in this artifact (0.4.0).** It sends the challenge back unsigned. A production VARAi server refuses a debug binding when it is issued and again when it is used, so it works only against staging, test or development servers. It lives in a separate, opt-in artifact so a release build cannot contain it: `ai.varai:lens-journey` has no debug payload and no public way to make one (`AttestationPayload.Restricted` has an `internal` constructor that only the debug artifact is allowed to call, and the transport refuses a restricted payload from anywhere else with `ATTESTATION_PAYLOAD_NOT_ALLOWED`). Add the debug artifact to the staging or debug variant only:
+
+```kotlin
+// app/build.gradle.kts: NEVER implementation(...) or releaseImplementation(...)
+"stagingDebugImplementation"("ai.varai:lens-journey-debug-attestation:0.4.0")
+```
+
+```kotlin
+// in the staging/debug source set only
+import ai.varai.lensjourney.debug.DebugAttestationProvider
+val provider: AttestationProvider = DebugAttestationProvider()
+```
+
+The release build then fails to compile if release code names `ai.varai.lensjourney.debug.DebugAttestationProvider`. As a second check, scan the release classpath for the artifact (`./gradlew :app:releaseRuntimeClasspath --dependencies` must not list `lens-journey-debug-attestation`) and the release APK/AAB for the class `ai/varai/lensjourney/debug/DebugAttestationProvider`. Upgrading from 0.3.0: change the import from `ai.varai.lensjourney.DebugAttestationProvider` to `ai.varai.lensjourney.debug.DebugAttestationProvider`, and replace a `Debug` branch in a `when` over `AttestationPayload` with `Restricted` (or `else`). An app can defeat the compile-time check only by passing `-Xfriend-paths` to its own compiler or by vendoring the sources, which is a deliberate source-level fork and not an API.
 
 The optional `attestationAccepted(installId)`, `attestationRejected(installId)` and `installIdReplaced(oldInstallId)` let a provider commit or drop state around the server's verdict: drop what you staged for a refused attempt, keep what the server already accepted, and drop everything for the old id when the SDK starts a new install. The SDK starts a new install (a new install id, one more mint in the same call) when a first App Attest attestation is refused or two assertions are refused in a row; a Play Integrity refusal never does.
 
@@ -106,14 +119,16 @@ A 2xx body that cannot be decoded (for example a `subtotal` that is neither a de
 
 `JourneyConfig(brand = ...)` is optional and takes a brand code the server knows (for example `"ACME"`). It must match the server's rule, a letter followed by up to 31 letters or digits after trimming (the server compares case-insensitively); anything else throws `InvalidRequestException` from the constructor, and the trimmed value is what is sent. When set, the SDK sends `brand` on every `/evaluate` call and on the `/configurations` call made by `finish()`, so the server picks that brand's workflow. When null it sends no `brand` field and behaviour is unchanged.
 
-`LensJourney.VERSION` is the SDK version (`"0.3.0"`); it matches `version` in `build.gradle.kts`.
+`LensJourney.VERSION` is the SDK version (`"0.4.0"`); it matches `version` in `build.gradle.kts`.
 
 ## Distribution
 
 Add the library from Maven Central and pin an exact version while the API is `0.x` (use Gradle dependency locking):
 
 ```kotlin
-implementation("ai.varai:lens-journey:0.3.0")
+implementation("ai.varai:lens-journey:0.4.0")
+// staging/debug variant only, for DebugAttestationProvider (see above):
+// stagingDebugImplementation("ai.varai:lens-journey-debug-attestation:0.4.0")
 ```
 
 ## Changelog

@@ -4,6 +4,14 @@ plugins {
     kotlin("jvm") version "2.0.21"
     kotlin("plugin.serialization") version "2.0.21"
     `maven-publish`
+    // The committed API dumps (api/*.api) are the proof of what each artifact exposes. `apiCheck` (part of `check`) fails when the
+    // public API of either published artifact changes without the dump being regenerated and reviewed (`./gradlew apiDump`).
+    id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.16.3"
+}
+
+// The consumer modules are test apps, never published: no API to validate.
+apiValidation {
+    ignoredProjects.addAll(listOf("boundary-tests", "consumer-with-debug"))
 }
 
 group = "ai.varai"

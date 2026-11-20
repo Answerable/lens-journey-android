@@ -131,7 +131,15 @@ class MobileKeyTransport(
                     payload.assertion?.let { put("assertion", Base64.getEncoder().encodeToString(it)) }
                 })
                 is AttestationPayload.PlayIntegrity -> put("android", buildJsonObject { put("integrity_token", payload.token) })
-                is AttestationPayload.Debug -> put("debug", buildJsonObject { put("challenge", payload.challenge) })
+                is AttestationPayload.Restricted -> {
+                    // Second line of defence. The compiler is the boundary: an app cannot construct a Restricted payload. `internal` is
+                    // public in the bytecode, though, so a Java caller or reflection could, and the transport refuses what did not come
+                    // from the debug attestation artifact. This runs before install-token is called.
+                    if (payload.origin != DEBUG_ATTESTATION_ORIGIN || payload.field != DEBUG_ATTESTATION_FIELD) {
+                        throw AttestationException("This attestation payload is not allowed from this build.", "ATTESTATION_PAYLOAD_NOT_ALLOWED")
+                    }
+                    put(payload.field, buildJsonObject { payload.values.forEach { (name, value) -> put(name, value) } })
+                }
             }
         }
         val tokenResponse = try {

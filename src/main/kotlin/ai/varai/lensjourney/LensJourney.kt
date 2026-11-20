@@ -245,7 +245,7 @@ class LensJourney(
 
     companion object {
         /** The SDK version. Keep it equal to `version` in build.gradle.kts, `VERSION` and the newest `##` heading in `CHANGELOG.md` (the release version check compares all four). */
-        const val VERSION = "0.3.0"
+        const val VERSION = "0.4.0"
         private const val API_ROOT = "/api/v1/lens-journey"
         private const val JSON_CONTENT_TYPE = "application/json"
         private const val MAX_EVALUATE_BYTES = 16 * 1024

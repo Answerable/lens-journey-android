@@ -37,7 +37,7 @@ class StagingAppTest {
             }
         }
         val transport = DebugAttestation.transport(
-            "cspk_live_abc123", "https://staging.example.com", InMemoryInstallIdStore(), http = server, clockMillis = { 1_800_000_000_000L },
+            "cspk_live_abc123", "https://shop.example.com", InMemoryInstallIdStore(), http = server, clockMillis = { 1_800_000_000_000L },
         )
 
         val response = transport.send(TransportRequest("POST", evaluate, emptyMap()))
@@ -53,7 +53,7 @@ class StagingAppTest {
     @Test
     fun `the staging journey factory is available next to the release one`() {
         // Construction only: it proves the entry point an app calls exists and refuses a secret key like the release path.
-        LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://staging.example.com")
-        assertTrue(runCatching { LensJourney.mobileDebug(JourneyConfig(), "cs_live_abcdefghijklmnop", "https://staging.example.com") }.isFailure)
+        LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://shop.example.com")
+        assertTrue(runCatching { LensJourney.mobileDebug(JourneyConfig(), "cs_live_abcdefghijklmnop", "https://shop.example.com") }.isFailure)
     }
 }

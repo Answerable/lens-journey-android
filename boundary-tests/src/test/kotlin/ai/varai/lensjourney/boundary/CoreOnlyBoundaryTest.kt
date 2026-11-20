@@ -92,7 +92,7 @@ class CoreOnlyBoundaryTest {
     fun `the core artifact has no debug entry point`() {
         assertRefused(
             core("""import ai.varai.lensjourney.debug.DebugAttestation
-                fun transport() = DebugAttestation.transport("cspk_live_abc123", "https://staging.example.com")"""),
+                fun transport() = DebugAttestation.transport("cspk_live_abc123", "https://shop.example.com")"""),
             "Unresolved reference", "debug",
         )
     }
@@ -116,8 +116,8 @@ class CoreOnlyBoundaryTest {
             import ai.varai.lensjourney.debug.DebugAttestation
             import ai.varai.lensjourney.debug.mobileDebug
 
-            fun transport(): Transport = DebugAttestation.transport("cspk_live_abc123", "https://staging.example.com")
-            fun journey(): LensJourney = LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://staging.example.com")
+            fun transport(): Transport = DebugAttestation.transport("cspk_live_abc123", "https://shop.example.com")
+            fun journey(): LensJourney = LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://shop.example.com")
             """.trimIndent(),
             CompilerHarness.coreAndDebugClasspath,
         )

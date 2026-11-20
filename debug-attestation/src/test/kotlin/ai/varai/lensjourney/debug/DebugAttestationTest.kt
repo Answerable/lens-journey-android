@@ -39,7 +39,7 @@ class DebugAttestationTest {
     }
 
     private fun transport(server: Server, store: InMemoryInstallIdStore = InMemoryInstallIdStore()) =
-        DebugAttestation.transport("cspk_live_abc123", "https://staging.example.com", store, http = server, clockMillis = { 1_800_000_000_000L })
+        DebugAttestation.transport("cspk_live_abc123", "https://shop.example.com", store, http = server, clockMillis = { 1_800_000_000_000L })
 
     private fun journey(body: String = """{"a":1}""") = TransportRequest("POST", evaluate, mapOf("X-Client-Id" to "client_123"), body.encodeToByteArray(), "application/json")
 

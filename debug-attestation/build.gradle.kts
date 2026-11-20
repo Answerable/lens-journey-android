@@ -79,9 +79,11 @@ publishing {
         }
     }
     repositories {
+        // The SAME local Maven repository as the core artifact (<root>/build/central-repo), so the release script zips ONE bundle that
+        // holds both artifacts.
         maven {
             name = "releaseBundle"
-            url = URI(layout.buildDirectory.dir("central-repo").get().asFile.toURI().toString())
+            url = URI(rootProject.layout.buildDirectory.dir("central-repo").get().asFile.toURI().toString())
         }
     }
 }

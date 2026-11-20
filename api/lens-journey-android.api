@@ -28,10 +28,6 @@ public final class ai/varai/lensjourney/AttestationPayload$PlayIntegrity : ai/va
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class ai/varai/lensjourney/AttestationPayload$Restricted : ai/varai/lensjourney/AttestationPayload {
-	public fun toString ()Ljava/lang/String;
-}
-
 public abstract interface class ai/varai/lensjourney/AttestationProvider {
 	public abstract fun attest (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun attestationAccepted (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

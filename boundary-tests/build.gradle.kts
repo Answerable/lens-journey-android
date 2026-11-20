@@ -26,6 +26,7 @@ dependencies {
     testImplementation(project(":"))
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21")
 }
 
@@ -38,4 +39,5 @@ tasks.test {
     // The classpaths the snippets compile against. The first has the core artifact and its runtime dependencies, nothing else.
     systemProperty("boundary.coreOnlyClasspath", coreOnly.incoming.files.asPath)
     systemProperty("boundary.coreAndDebugClasspath", coreAndDebug.incoming.files.asPath)
+    systemProperty("boundary.coreSourceDir", rootProject.file("src/main/kotlin").absolutePath)
 }

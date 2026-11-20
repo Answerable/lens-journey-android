@@ -26,28 +26,20 @@ class DebugAttestationBoundaryTest {
     @Test
     fun `the core public API does not list the old Debug payload or provider`() {
         assertFalse(coreApi.any { it.contains("AttestationPayload\$Debug") })
-        assertFalse(coreApi.any { it.contains("DebugAttestationProvider") })
+        assertFalse(coreApi.any { it.contains("DebugAttestation") })
+        assertFalse(coreApi.any { it.contains("Restricted") })
     }
 
     @Test
-    fun `the restricted payload has no public constructor and no public accessor`() {
-        val start = coreApi.indexOfFirst { it.startsWith("public final class ai/varai/lensjourney/AttestationPayload\$Restricted ") }
-        assertTrue(start >= 0, "Restricted must be part of the public API as a type")
-        val members = coreApi.drop(start + 1).takeWhile { it != "}" }.map { it.trim() }
-        assertEquals(listOf("public fun toString ()Ljava/lang/String;"), members, "Restricted exposes nothing an app could build or read from")
-    }
-
-    @Test
-    fun `the payload kinds an app can name are exactly the platform proofs and the opaque restricted type`() {
+    fun `the payload kinds an app can name are exactly the two platform proofs`() {
         val kinds = coreApi.filter { it.contains("class ai/varai/lensjourney/AttestationPayload\$") }.map { it.substringAfter("AttestationPayload\$").substringBefore(" ") }
-        assertEquals(listOf("AppAttest", "PlayIntegrity", "Restricted"), kinds.sorted())
+        assertEquals(listOf("AppAttest", "PlayIntegrity"), kinds.sorted())
     }
 
     @Test
-    fun `the debug artifact exposes the provider and only the provider`() {
-        val classes = debugApi.filter { it.contains(" class ") || it.contains(" interface ") || it.contains(" object ") }
-        assertEquals(1, classes.size, classes.toString())
-        assertTrue(classes.single().contains("ai/varai/lensjourney/debug/DebugAttestationProvider"), classes.single())
+    fun `the debug artifact exposes its entry points and nothing else`() {
+        val classes = debugApi.filter { it.contains(" class ") || it.contains(" interface ") || it.contains(" object ") }.map { it.substringAfter(" class ").substringBefore(" ") }
+        assertEquals(listOf("ai/varai/lensjourney/debug/DebugAttestation", "ai/varai/lensjourney/debug/DebugAttestationKt"), classes.sorted())
     }
 
     @Test

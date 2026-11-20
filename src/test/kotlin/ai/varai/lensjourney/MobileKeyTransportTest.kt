@@ -499,32 +499,8 @@ class MobileKeyTransportTest {
     @Test
     fun `payloads and requests do not print their secrets`() {
         val request = TransportRequest("POST", "/x", mapOf("X-API-Key" to "cspk_live_abc123", "X-CS-Install-Token" to "tok-secret"), "body".encodeToByteArray())
-        val text = listOf(request, AttestationPayload.Restricted(DEBUG_ATTESTATION_ORIGIN, DEBUG_ATTESTATION_FIELD, mapOf("challenge" to "chal-secret")), AttestationPayload.PlayIntegrity("pi-secret"), AttestationPayload.AppAttest("key-secret", byteArrayOf(1))).joinToString(" ") { it.toString() }
+        val text = listOf(request, AttestationPayload.PlayIntegrity("chal-secret"), AttestationPayload.PlayIntegrity("pi-secret"), AttestationPayload.AppAttest("key-secret", byteArrayOf(1))).joinToString(" ") { it.toString() }
         for (secret in listOf("cspk_live_abc123", "tok-secret", "chal-secret", "pi-secret", "key-secret")) assertFalse(text.contains(secret), secret)
-    }
-
-    // restricted payloads: only the debug attestation artifact may send one
-
-    @Test
-    fun `a restricted payload from the debug artifact is sent in the debug field`() = runBlocking {
-        val stub = StubServer(start)
-        val payload = AttestationPayload.Restricted(DEBUG_ATTESTATION_ORIGIN, DEBUG_ATTESTATION_FIELD, mapOf("challenge" to "echo"))
-        transport(stub, RecordingProvider(payload)).send(journeyRequest())
-        val tokenBody = body(stub.calls.first { it.path == tokenRoute })
-        assertEquals("echo", tokenBody["debug"]!!.jsonObject["challenge"]!!.jsonPrimitive.content)
-        assertNull(tokenBody["ios"]); assertNull(tokenBody["android"])
-    }
-
-    @Test
-    fun `a restricted payload from anywhere else is refused before install-token is called`() = runBlocking {
-        for ((origin, field) in listOf("an-app" to "debug", DEBUG_ATTESTATION_ORIGIN to "ios", DEBUG_ATTESTATION_ORIGIN to "android", "" to "", DEBUG_ATTESTATION_ORIGIN.uppercase() to "debug")) {
-            val stub = StubServer(start)
-            val provider = RecordingProvider(AttestationPayload.Restricted(origin, field, mapOf("challenge" to "c")))
-            val error = assertFailsWith<AttestationException>("$origin/$field") { transport(stub, provider).send(journeyRequest()) }
-            assertEquals("ATTESTATION_PAYLOAD_NOT_ALLOWED", error.code)
-            assertTrue(stub.calls.none { it.path == tokenRoute || it.path == evaluate }, "nothing past the nonce call may happen for $origin/$field: ${stub.calls.map { it.path }}")
-            assertTrue(provider.accepted.isEmpty())
-        }
     }
 
     // through the real LensJourney

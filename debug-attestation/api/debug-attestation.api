@@ -1,8 +1,11 @@
-public final class ai/varai/lensjourney/debug/DebugAttestationProvider : ai/varai/lensjourney/AttestationProvider {
-	public fun <init> ()V
-	public fun attest (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun attestationAccepted (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun attestationRejected (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun installIdReplaced (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class ai/varai/lensjourney/debug/DebugAttestation {
+	public static final field INSTANCE Lai/varai/lensjourney/debug/DebugAttestation;
+	public final fun transport (Ljava/lang/String;Ljava/lang/String;Lai/varai/lensjourney/InstallIdStore;ZLai/varai/lensjourney/Transport;Lkotlin/jvm/functions/Function0;)Lai/varai/lensjourney/Transport;
+	public static synthetic fun transport$default (Lai/varai/lensjourney/debug/DebugAttestation;Ljava/lang/String;Ljava/lang/String;Lai/varai/lensjourney/InstallIdStore;ZLai/varai/lensjourney/Transport;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lai/varai/lensjourney/Transport;
+}
+
+public final class ai/varai/lensjourney/debug/DebugAttestationKt {
+	public static final fun mobileDebug (Lai/varai/lensjourney/LensJourney$Companion;Lai/varai/lensjourney/JourneyConfig;Ljava/lang/String;Ljava/lang/String;Lai/varai/lensjourney/InstallIdStore;ZLkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function0;)Lai/varai/lensjourney/LensJourney;
+	public static synthetic fun mobileDebug$default (Lai/varai/lensjourney/LensJourney$Companion;Lai/varai/lensjourney/JourneyConfig;Ljava/lang/String;Ljava/lang/String;Lai/varai/lensjourney/InstallIdStore;ZLkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lai/varai/lensjourney/LensJourney;
 }
 

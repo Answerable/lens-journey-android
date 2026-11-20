@@ -63,25 +63,7 @@ sealed class AttestationPayload {
     data class PlayIntegrity(val token: String) : AttestationPayload() {
         override fun toString() = "AttestationPayload.PlayIntegrity(<redacted>)"
     }
-
-    /**
-     * A proof of a kind this artifact does not offer to apps. An app cannot construct one and cannot read one: the constructor and the
-     * fields are `internal`. The only maker is the opt-in `ai.varai:lens-journey-debug-attestation` artifact (staging and test builds),
-     * which the build of this SDK grants access to. The transport sends one only if it came from that artifact. A release app that
-     * depends on this artifact alone has no way to build a payload that is not [AppAttest] or [PlayIntegrity].
-     */
-    class Restricted internal constructor(
-        internal val origin: String,
-        internal val field: String,
-        internal val values: Map<String, String>,
-    ) : AttestationPayload() {
-        override fun toString() = "AttestationPayload.Restricted(<redacted>)"
-    }
 }
-
-/** The origin that `lens-journey-debug-attestation` stamps on its payloads, and the one wire field the transport accepts from it. */
-internal const val DEBUG_ATTESTATION_ORIGIN = "ai.varai:lens-journey-debug-attestation"
-internal const val DEBUG_ATTESTATION_FIELD = "debug"
 
 private fun ByteArray?.contentEqualsNullable(other: ByteArray?) = if (this == null || other == null) this == other else contentEquals(other)
 

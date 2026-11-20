@@ -1,7 +1,7 @@
 import java.net.URI
 
-// ai.varai:lens-journey-debug-attestation: the opt-in artifact that holds DebugAttestationProvider. It is the only code that can make a
-// debug attestation payload. Apps add it to the staging/debug variant only.
+// ai.varai:lens-journey-debug-attestation: the opt-in artifact that holds the whole debug attestation flow (the core artifact has no
+// debug code at all). Apps add it to the staging/debug variant only.
 plugins {
     kotlin("jvm")
     `maven-publish`
@@ -13,27 +13,18 @@ version = rootProject.file("VERSION").readText().trim()
 
 repositories { mavenCentral() }
 
-val core = project(":")
-
 dependencies {
-    // The provider implements the core's AttestationProvider, so the core is part of this artifact's API (a compile-scope pom dependency).
-    api(core)
+    // The entry points return the core's Transport and LensJourney, so the core is part of this artifact's API (a compile-scope pom dependency).
+    api(project(":"))
+    // The debug install-token body is built here, with the JSON library the core already uses.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 
-kotlin {
-    jvmToolchain(17)
-    compilerOptions {
-        // THE BOUNDARY. The core's AttestationPayload.Restricted constructor is `internal`. Kotlin lets a module see another module's
-        // `internal` declarations only when that module is named as a friend. Only this module is: apps are not, so their compiler
-        // refuses the constructor. An app can defeat this only by passing the same flag by hand (a deliberate source-level fork).
-        val coreJar = core.tasks.named<Jar>("jar").flatMap { it.archiveFile }
-        val coreClasses = core.layout.buildDirectory.dir("classes/kotlin/main")
-        freeCompilerArgs.add(provider { "-Xfriend-paths=${coreJar.get().asFile},${coreClasses.get().asFile}" })
-    }
-}
+kotlin { jvmToolchain(17) }
 
 java {
     withSourcesJar()

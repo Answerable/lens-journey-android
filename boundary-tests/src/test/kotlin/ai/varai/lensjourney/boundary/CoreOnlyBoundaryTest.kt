@@ -1,6 +1,5 @@
 package ai.varai.lensjourney.boundary
 
-import ai.varai.lensjourney.AttestationException
 import ai.varai.lensjourney.AttestationPayload
 import ai.varai.lensjourney.AttestationProvider
 import ai.varai.lensjourney.InMemoryInstallIdStore
@@ -13,13 +12,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 
 /**
  * An app that depends on the core artifact (`ai.varai:lens-journey`) and nothing else, which is what a release build looks like.
- * ADR-369 D3/D4: a release build cannot use debug attestation. Each "refused" test compiles app code with the real Kotlin compiler.
+ * ADR-369 D3/D4: a release build cannot use debug attestation. The core artifact holds no code that writes a `debug` wire field and
+ * no type that represents a debug payload, so there is nothing to construct, name, subclass or reflect on. Each "refused" test
+ * compiles app code with the real Kotlin compiler.
  */
 class CoreOnlyBoundaryTest {
     private fun core(source: String) = CompilerHarness.compile(source.trimIndent(), CompilerHarness.coreOnlyClasspath)
@@ -42,7 +44,6 @@ class CoreOnlyBoundaryTest {
             fun describe(payload: AttestationPayload): String = when (payload) {
                 is AttestationPayload.AppAttest -> "app-attest"
                 is AttestationPayload.PlayIntegrity -> "play-integrity"
-                is AttestationPayload.Restricted -> "restricted"
             }
 
             fun config() = MobileKeyConfig("cspk_live_abc123", "https://shop.example.com", AppProvider())
@@ -57,6 +58,15 @@ class CoreOnlyBoundaryTest {
             core("""import ai.varai.lensjourney.*
                 fun forge(): AttestationPayload = AttestationPayload.Debug("challenge")"""),
             "Unresolved reference", "Debug",
+        )
+    }
+
+    @Test
+    fun `the core artifact has no restricted or other opaque payload type`() {
+        assertRefused(
+            core("""import ai.varai.lensjourney.*
+                fun forge(): AttestationPayload = AttestationPayload.Restricted("o", "debug", mapOf("challenge" to "c"))"""),
+            "Unresolved reference", "Restricted",
         )
     }
 
@@ -79,20 +89,11 @@ class CoreOnlyBoundaryTest {
     }
 
     @Test
-    fun `an app cannot construct a restricted payload`() {
+    fun `the core artifact has no debug entry point`() {
         assertRefused(
-            core("""import ai.varai.lensjourney.*
-                fun forge(): AttestationPayload = AttestationPayload.Restricted("ai.varai:lens-journey-debug-attestation", "debug", mapOf("challenge" to "c"))"""),
-            "Cannot access", "internal",
-        )
-    }
-
-    @Test
-    fun `an app cannot read what a restricted payload carries`() {
-        assertRefused(
-            core("""import ai.varai.lensjourney.*
-                fun peek(payload: AttestationPayload.Restricted) = payload.values"""),
-            "Cannot access", "internal",
+            core("""import ai.varai.lensjourney.debug.DebugAttestation
+                fun transport() = DebugAttestation.transport("cspk_live_abc123", "https://staging.example.com")"""),
+            "Unresolved reference", "debug",
         )
     }
 
@@ -105,16 +106,18 @@ class CoreOnlyBoundaryTest {
         )
     }
 
-    // The same app code, with the debug artifact on the classpath: it compiles, and the payload is still unconstructible.
+    // The same app code, with the debug artifact on the classpath: its entry point compiles, and core still has no debug payload type.
 
     @Test
-    fun `control - with the debug artifact on the classpath the provider compiles`() {
+    fun `control - with the debug artifact on the classpath its entry point compiles`() {
         val result = CompilerHarness.compile(
             """
             import ai.varai.lensjourney.*
-            import ai.varai.lensjourney.debug.DebugAttestationProvider
+            import ai.varai.lensjourney.debug.DebugAttestation
+            import ai.varai.lensjourney.debug.mobileDebug
 
-            fun config() = MobileKeyConfig("cspk_live_abc123", "https://staging.example.com", DebugAttestationProvider())
+            fun transport(): Transport = DebugAttestation.transport("cspk_live_abc123", "https://staging.example.com")
+            fun journey(): LensJourney = LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://staging.example.com")
             """.trimIndent(),
             CompilerHarness.coreAndDebugClasspath,
         )
@@ -122,56 +125,61 @@ class CoreOnlyBoundaryTest {
     }
 
     @Test
-    fun `even with the debug artifact linked an app cannot construct a restricted payload`() {
-        val result = CompilerHarness.compile(
-            """
-            import ai.varai.lensjourney.*
-            fun forge(): AttestationPayload = AttestationPayload.Restricted("ai.varai:lens-journey-debug-attestation", "debug", mapOf("challenge" to "c"))
-            """.trimIndent(),
-            CompilerHarness.coreAndDebugClasspath,
-        )
-        assertRefused(result, "Cannot access", "internal")
+    fun `even with the debug artifact linked the core has no debug payload type`() {
+        for (name in listOf("Debug", "Restricted")) {
+            val result = CompilerHarness.compile(
+                """
+                import ai.varai.lensjourney.*
+                fun forge(): AttestationPayload = AttestationPayload.$name("c")
+                """.trimIndent(),
+                CompilerHarness.coreAndDebugClasspath,
+            )
+            assertRefused(result, "Unresolved reference", name)
+        }
     }
 
     @Test
     fun `the core classpath does not contain the debug artifact at run time`() {
-        assertFailsWith<ClassNotFoundException> { Class.forName("ai.varai.lensjourney.debug.DebugAttestationProvider") }
-        assertFailsWith<ClassNotFoundException> { Class.forName("ai.varai.lensjourney.DebugAttestationProvider") }
-        assertFailsWith<ClassNotFoundException> { Class.forName("ai.varai.lensjourney.AttestationPayload\$Debug") }
+        for (name in listOf(
+            "ai.varai.lensjourney.debug.DebugAttestation", "ai.varai.lensjourney.debug.DebugAttestationProvider",
+            "ai.varai.lensjourney.DebugAttestationProvider", "ai.varai.lensjourney.AttestationPayload\$Debug",
+            "ai.varai.lensjourney.AttestationPayload\$Restricted",
+        )) {
+            assertFailsWith<ClassNotFoundException>(name) { Class.forName(name) }
+        }
     }
 
-    // Second line of defence. The compiler is the boundary. `internal` is public in the bytecode, so a Java caller or reflection can
-    // reach the constructor. The transport still refuses to send a restricted payload that did not come from the debug artifact.
+    // Behaviour, not just names: whatever payload the core can represent, the core's install-token body never carries a debug field.
 
     @Test
-    fun `a restricted payload forged by reflection is refused before install-token is called`() = runBlocking {
-        // Named by string: the type is part of the public API, but its constructor is not, so a plain call does not compile (see above).
-        val constructor = Class.forName("ai.varai.lensjourney.AttestationPayload\$Restricted").declaredConstructors.single()
-        constructor.isAccessible = true
-        val forged = constructor.newInstance("an-app", "debug", mapOf("challenge" to "c")) as AttestationPayload
-
-        val server = RecordingServer()
-        val transport = MobileKeyTransport(
-            MobileKeyConfig("cspk_live_abc123", "https://shop.example.com", OneShotProvider(forged), InMemoryInstallIdStore()),
-            server,
-            { 1_800_000_000_000L },
+    fun `the core transport emits only platform bindings on install-token`() = runBlocking {
+        val payloads = listOf(
+            AttestationPayload.PlayIntegrity("pi-token") to "android",
+            AttestationPayload.AppAttest("key-1", attestationObject = byteArrayOf(1, 2, 3)) to "ios",
         )
-        val error = assertFailsWith<AttestationException> { transport.send(TransportRequest("POST", "/api/v1/lens-journey/evaluate", emptyMap())) }
-        assertEquals("ATTESTATION_PAYLOAD_NOT_ALLOWED", error.code)
-        assertTrue(server.paths.none { it.endsWith("/install-token") }, "install-token must never be called: ${server.paths}")
-        assertNotEquals(emptyList<String>(), server.paths, "the nonce call is made first")
-    }
-}
-
-private class OneShotProvider(private val payload: AttestationPayload) : AttestationProvider {
-    override suspend fun attest(challenge: String, installId: String) = payload
-}
-
-private class RecordingServer : Transport {
-    val paths = mutableListOf<String>()
-    override suspend fun send(request: TransportRequest): TransportResponse {
-        paths += request.path
-        val body = if (request.path.endsWith("/install-nonce")) """{"nonce":"n1","challenge":"challenge-1"}""" else "{}"
-        return TransportResponse(200, emptyMap(), body.encodeToByteArray())
+        for ((payload, field) in payloads) {
+            val bodies = mutableListOf<String>()
+            val server = Transport { request ->
+                when {
+                    request.path.endsWith("/install-nonce") -> TransportResponse(200, emptyMap(), """{"nonce":"n1","challenge":"challenge-1"}""".encodeToByteArray())
+                    request.path.endsWith("/install-token") -> {
+                        bodies += request.body!!.decodeToString()
+                        TransportResponse(200, emptyMap(), """{"install_token":"t","expires_at":"2027-01-15T08:00:00Z"}""".encodeToByteArray())
+                    }
+                    else -> TransportResponse(200, emptyMap(), "{}".encodeToByteArray())
+                }
+            }
+            val provider = object : AttestationProvider {
+                override suspend fun attest(challenge: String, installId: String) = payload
+            }
+            MobileKeyTransport(
+                MobileKeyConfig("cspk_live_abc123", "https://shop.example.com", provider, InMemoryInstallIdStore()),
+                server,
+                { 1_800_000_000_000L },
+            ).send(TransportRequest("POST", "/api/v1/lens-journey/evaluate", emptyMap()))
+            assertEquals(1, bodies.size)
+            assertEquals(setOf("install_id", "platform", "nonce", field), Json.parseToJsonElement(bodies[0]).jsonObject.keys, bodies[0])
+            assertFalse(bodies[0].contains("debug", ignoreCase = true), bodies[0])
+        }
     }
 }

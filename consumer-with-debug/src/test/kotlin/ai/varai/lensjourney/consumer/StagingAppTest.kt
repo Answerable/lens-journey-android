@@ -1,12 +1,13 @@
 package ai.varai.lensjourney.consumer
 
 import ai.varai.lensjourney.InMemoryInstallIdStore
-import ai.varai.lensjourney.MobileKeyConfig
-import ai.varai.lensjourney.MobileKeyTransport
+import ai.varai.lensjourney.JourneyConfig
+import ai.varai.lensjourney.LensJourney
 import ai.varai.lensjourney.Transport
 import ai.varai.lensjourney.TransportRequest
 import ai.varai.lensjourney.TransportResponse
-import ai.varai.lensjourney.debug.DebugAttestationProvider
+import ai.varai.lensjourney.debug.DebugAttestation
+import ai.varai.lensjourney.debug.mobileDebug
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -35,10 +36,8 @@ class StagingAppTest {
                 else -> TransportResponse(200, emptyMap(), "{}".encodeToByteArray())
             }
         }
-        val transport = MobileKeyTransport(
-            MobileKeyConfig("cspk_live_abc123", "https://staging.example.com", DebugAttestationProvider(), InMemoryInstallIdStore()),
-            server,
-            { 1_800_000_000_000L },
+        val transport = DebugAttestation.transport(
+            "cspk_live_abc123", "https://staging.example.com", InMemoryInstallIdStore(), http = server, clockMillis = { 1_800_000_000_000L },
         )
 
         val response = transport.send(TransportRequest("POST", evaluate, emptyMap()))
@@ -49,5 +48,12 @@ class StagingAppTest {
         assertEquals("challenge-from-server", tokenBody["debug"]!!.jsonObject["challenge"]!!.jsonPrimitive.content)
         assertTrue("ios" !in tokenBody && "android" !in tokenBody, "only the debug binding is sent: $tokenBody")
         assertEquals("token-1", calls[2].headers["X-CS-Install-Token"])
+    }
+
+    @Test
+    fun `the staging journey factory is available next to the release one`() {
+        // Construction only: it proves the entry point an app calls exists and refuses a secret key like the release path.
+        LensJourney.mobileDebug(JourneyConfig(), "cspk_live_abc123", "https://staging.example.com")
+        assertTrue(runCatching { LensJourney.mobileDebug(JourneyConfig(), "cs_live_abcdefghijklmnop", "https://staging.example.com") }.isFailure)
     }
 }

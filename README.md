@@ -11,7 +11,7 @@ Pure Kotlin/JVM client for the server-driven Commerce Studio lens journey. It ha
 val mobile = MobileKeyConfig(
     mobileKey = appMobileKey,                      // "cspk_..." from your VARAi dashboard
     baseUrl = apiBaseUrl,                          // the VARAi API URL for your environment (https)
-    attestationProvider = PlayIntegrityProvider(context, cloudProjectNumber), // the staging variant uses DebugAttestationProvider (see below)
+    attestationProvider = PlayIntegrityProvider(context, cloudProjectNumber), // the staging variant uses LensJourney.mobileDebug (see below)
     installIdStore = PrefsInstallIdStore(context), // keep the install id across launches
 )
 val journey = LensJourney.mobile(JourneyConfig(currency = "USD", store = "us"), mobile)
@@ -64,7 +64,7 @@ class PlayIntegrityProvider(private val context: Context, private val cloudProje
 
 Throw `AttestationException` (or let the Play error propagate: any other exception is wrapped as one) when the device cannot attest. A device that fails attestation cannot start a journey: emulators and rooted devices are refused by design.
 
-**`DebugAttestationProvider` is for staging only, and it is not in this artifact (0.4.0).** It sends the challenge back unsigned. A production VARAi server refuses a debug binding when it is issued and again when it is used, so it works only against staging, test or development servers. It lives in a separate, opt-in artifact so a release build cannot contain it: `ai.varai:lens-journey` has no debug payload and no public way to make one (`AttestationPayload.Restricted` has an `internal` constructor that only the debug artifact is allowed to call, and the transport refuses a restricted payload from anywhere else with `ATTESTATION_PAYLOAD_NOT_ALLOWED`). Add the debug artifact to the staging or debug variant only:
+**Debug attestation is for staging only, and it is not in this artifact (0.4.0).** It sends the server's challenge back unsigned. A production VARAi server refuses a debug binding when it is issued and again when it is used, so it works only against staging, test or development servers. It lives in a separate, opt-in artifact so a release build cannot contain it: `ai.varai:lens-journey` has no debug payload, no debug provider and no code that writes a `debug` field. Add the debug artifact to the staging or debug variant only:
 
 ```kotlin
 // app/build.gradle.kts: NEVER implementation(...) or releaseImplementation(...)
@@ -73,11 +73,12 @@ Throw `AttestationException` (or let the Play error propagate: any other excepti
 
 ```kotlin
 // in the staging/debug source set only
-import ai.varai.lensjourney.debug.DebugAttestationProvider
-val provider: AttestationProvider = DebugAttestationProvider()
+import ai.varai.lensjourney.debug.mobileDebug
+val journey = LensJourney.mobileDebug(JourneyConfig(currency = "USD", store = "us"), mobileKey = appMobileKey, baseUrl = stagingApiBaseUrl, installIdStore = PrefsInstallIdStore(context))
+// or: LensJourney(config, DebugAttestation.transport(appMobileKey, stagingApiBaseUrl, store))
 ```
 
-The release build then fails to compile if release code names `ai.varai.lensjourney.debug.DebugAttestationProvider`. As a second check, scan the release classpath for the artifact (`./gradlew :app:releaseRuntimeClasspath --dependencies` must not list `lens-journey-debug-attestation`) and the release APK/AAB for the class `ai/varai/lensjourney/debug/DebugAttestationProvider`. Upgrading from 0.3.0: change the import from `ai.varai.lensjourney.DebugAttestationProvider` to `ai.varai.lensjourney.debug.DebugAttestationProvider`, and replace a `Debug` branch in a `when` over `AttestationPayload` with `Restricted` (or `else`). An app can defeat the compile-time check only by passing `-Xfriend-paths` to its own compiler or by vendoring the sources, which is a deliberate source-level fork and not an API.
+The debug artifact runs the core's own mobile-key transport and changes only the `install-token` request body. Any app can wrap a `Transport` and write any body; that is no different from hand-writing the HTTP request, and a production server refuses a debug binding either way. What the core guarantees is that it never offers the path itself. A release build that names `ai.varai.lensjourney.debug.*` does not compile. As a second check, scan the release classpath for the artifact (`./gradlew :app:releaseRuntimeClasspath --dependencies` must not list `lens-journey-debug-attestation`) and the release APK/AAB for `ai/varai/lensjourney/debug/`. Upgrading from 0.3.0 is a source and binary break for code that used `DebugAttestationProvider` or `AttestationPayload.Debug`; the CHANGELOG has the steps.
 
 The optional `attestationAccepted(installId)`, `attestationRejected(installId)` and `installIdReplaced(oldInstallId)` let a provider commit or drop state around the server's verdict: drop what you staged for a refused attempt, keep what the server already accepted, and drop everything for the old id when the SDK starts a new install. The SDK starts a new install (a new install id, one more mint in the same call) when a first App Attest attestation is refused or two assertions are refused in a row; a Play Integrity refusal never does.
 
@@ -127,7 +128,7 @@ Add the library from Maven Central and pin an exact version while the API is `0.
 
 ```kotlin
 implementation("ai.varai:lens-journey:0.4.0")
-// staging/debug variant only, for DebugAttestationProvider (see above):
+// staging/debug variant only, for LensJourney.mobileDebug (see above):
 // stagingDebugImplementation("ai.varai:lens-journey-debug-attestation:0.4.0")
 ```
 

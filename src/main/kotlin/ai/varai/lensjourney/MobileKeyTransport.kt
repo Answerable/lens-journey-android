@@ -131,7 +131,6 @@ class MobileKeyTransport(
                     payload.assertion?.let { put("assertion", Base64.getEncoder().encodeToString(it)) }
                 })
                 is AttestationPayload.PlayIntegrity -> put("android", buildJsonObject { put("integrity_token", payload.token) })
-                is AttestationPayload.Debug -> put("debug", buildJsonObject { put("challenge", payload.challenge) })
             }
         }
         val tokenResponse = try {

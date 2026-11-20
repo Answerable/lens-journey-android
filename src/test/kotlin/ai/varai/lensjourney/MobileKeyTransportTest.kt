@@ -62,9 +62,9 @@ class MobileKeyTransportTest {
 
     @Test
     fun `a non https base url is refused unless allowed for debug`() {
-        val plain = MobileKeyConfig("cspk_live_abc123", "http://localhost:3000", DebugAttestationProvider())
+        val plain = MobileKeyConfig("cspk_live_abc123", "http://localhost:3000", TestProvider())
         assertEquals("baseUrl must use https (allowInsecureHttp = true is for local debugging only)", assertFailsWith<InvalidRequestException> { MobileKeyTransport(plain) }.message)
-        MobileKeyTransport(MobileKeyConfig("cspk_live_abc123", "http://localhost:3000", DebugAttestationProvider(), allowInsecureHttp = true))
+        MobileKeyTransport(MobileKeyConfig("cspk_live_abc123", "http://localhost:3000", TestProvider(), allowInsecureHttp = true))
     }
 
     // nonce -> attest -> token -> journey header
@@ -72,7 +72,7 @@ class MobileKeyTransportTest {
     @Test
     fun `first journey call runs nonce attest token and sends the install token header`() = runBlocking {
         val stub = StubServer(start)
-        val provider = RecordingProvider(AttestationPayload.Debug("echo"))
+        val provider = RecordingProvider(AttestationPayload.PlayIntegrity("echo"))
         val store = InMemoryInstallIdStore()
         val transport = transport(stub, provider, store)
 
@@ -99,8 +99,8 @@ class MobileKeyTransportTest {
         assertEquals(installId, tokenBody["install_id"]!!.jsonPrimitive.content)
         assertEquals("android", tokenBody["platform"]!!.jsonPrimitive.content)
         assertEquals("nonce-1", tokenBody["nonce"]!!.jsonPrimitive.content)
-        assertEquals("echo", tokenBody["debug"]!!.jsonObject["challenge"]!!.jsonPrimitive.content)
-        assertNull(tokenBody["ios"]); assertNull(tokenBody["android"])
+        assertEquals("echo", tokenBody["android"]!!.jsonObject["integrity_token"]!!.jsonPrimitive.content)
+        assertNull(tokenBody["ios"]); assertNull(tokenBody["debug"])
 
         val journey = calls[2]
         assertEquals("token-1", journey.headers["X-CS-Install-Token"])
@@ -136,7 +136,7 @@ class MobileKeyTransportTest {
     @Test
     fun `the token and install id are reused across calls`() = runBlocking {
         val stub = StubServer(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")))
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")))
         repeat(3) { transport.send(journeyRequest()) }
         assertEquals(1, stub.calls.count { it.path == nonceRoute })
         assertEquals(1, stub.calls.count { it.path == tokenRoute })
@@ -146,12 +146,12 @@ class MobileKeyTransportTest {
     @Test
     fun `a stored install id is reused and an invalid one is replaced`() = runBlocking {
         val stub = StubServer(start)
-        transport(stub, RecordingProvider(AttestationPayload.Debug("c")), InMemoryInstallIdStore("stored-install-id-0001")).send(journeyRequest())
+        transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), InMemoryInstallIdStore("stored-install-id-0001")).send(journeyRequest())
         assertEquals("stored-install-id-0001", body(stub.calls[0])["install_id"]!!.jsonPrimitive.content)
 
         val junk = InMemoryInstallIdStore("short")
         val stub2 = StubServer(start)
-        transport(stub2, RecordingProvider(AttestationPayload.Debug("c")), junk).send(journeyRequest())
+        transport(stub2, RecordingProvider(AttestationPayload.PlayIntegrity("c")), junk).send(journeyRequest())
         val replaced = assertNotNull(junk.load())
         assertNotEquals("short", replaced)
         assertEquals(replaced, body(stub2.calls[0])["install_id"]!!.jsonPrimitive.content)
@@ -160,7 +160,7 @@ class MobileKeyTransportTest {
     @Test
     fun `concurrent first calls mint once`() = runBlocking {
         val stub = StubServer(start, mintDelayMillis = 30)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")))
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")))
         val statuses = (1..5).map { async { transport.send(journeyRequest()).status } }.awaitAll()
         assertEquals(List(5) { 200 }, statuses)
         assertEquals(1, stub.calls.count { it.path == nonceRoute })
@@ -172,7 +172,7 @@ class MobileKeyTransportTest {
     fun `the token is refreshed five minutes before it expires`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 3_600_000)
         val clock = AtomicLong(start)
-        val provider = RecordingProvider(AttestationPayload.Debug("c"))
+        val provider = RecordingProvider(AttestationPayload.PlayIntegrity("c"))
         val transport = transport(stub, provider, clock = clock)
         transport.send(journeyRequest())
 
@@ -191,7 +191,7 @@ class MobileKeyTransportTest {
     fun `a short lived token is not minted again on every call`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 120_000)
         val clock = AtomicLong(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")), clock = clock)
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), clock = clock)
         transport.send(journeyRequest())
         clock.set(start + 30_000)
         transport.send(journeyRequest())
@@ -202,7 +202,7 @@ class MobileKeyTransportTest {
     fun `a failed refresh falls back to the token that is still valid`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 3_600_000)
         val clock = AtomicLong(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")), clock = clock)
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), clock = clock)
         transport.send(journeyRequest())
         stub.failNextNonce(503)
         clock.set(start + 3_600_000 - 200_000)
@@ -214,7 +214,7 @@ class MobileKeyTransportTest {
     fun `an expired token whose refresh fails surfaces the error`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 3_600_000)
         val clock = AtomicLong(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")), clock = clock)
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), clock = clock)
         transport.send(journeyRequest())
         stub.failNextNonce(503)
         clock.set(start + 3_601_000)
@@ -228,7 +228,7 @@ class MobileKeyTransportTest {
     fun `a 401 install token invalid mints once and retries the call`() = runBlocking {
         val stub = StubServer(start)
         stub.rejectJourneyToken("token-1", "INSTALL_TOKEN_INVALID")
-        val response = transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest("{\"a\":1}"))
+        val response = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest("{\"a\":1}"))
         assertEquals(200, response.status)
         assertEquals(listOf(nonceRoute, tokenRoute, evaluate, nonceRoute, tokenRoute, evaluate), stub.calls.map { it.path })
         assertEquals("token-1", stub.calls[2].headers["X-CS-Install-Token"])
@@ -240,7 +240,7 @@ class MobileKeyTransportTest {
     fun `the re-mint happens only once per call`() = runBlocking {
         val stub = StubServer(start)
         stub.rejectAllJourneyTokens("INSTALL_TOKEN_INVALID")
-        val response = transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest())
+        val response = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest())
         assertEquals(401, response.status, "the second 401 is returned, not retried again")
         assertEquals(2, stub.calls.count { it.path == evaluate })
         assertEquals(2, stub.mintCount)
@@ -250,7 +250,7 @@ class MobileKeyTransportTest {
     fun `other unauthorized answers are not re-minted`() = runBlocking {
         val stub = StubServer(start)
         stub.rejectAllJourneyTokens("SOMETHING_ELSE")
-        assertEquals(401, transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()).status)
+        assertEquals(401, transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()).status)
         assertEquals(1, stub.mintCount)
         assertEquals(1, stub.calls.count { it.path == evaluate })
     }
@@ -258,7 +258,7 @@ class MobileKeyTransportTest {
     @Test
     fun `two calls rejected together share one re-mint`() = runBlocking {
         val stub = StubServer(start, mintDelayMillis = 30)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")))
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")))
         transport.send(journeyRequest())
         stub.rejectJourneyToken("token-1", "INSTALL_TOKEN_INVALID")
         val statuses = (1..2).map { async { transport.send(journeyRequest()).status } }.awaitAll()
@@ -269,7 +269,7 @@ class MobileKeyTransportTest {
     @Test
     fun `a call rejected after another call already replaced the token reuses the new one`() = runBlocking {
         val stub = StubServer(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")))
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")))
         transport.send(journeyRequest())
         stub.rejectJourneyToken("token-1", "INSTALL_TOKEN_INVALID")
         val slow = async { transport.send(journeyRequest(headers = mapOf("X-Slow" to "1"))) }
@@ -302,7 +302,7 @@ class MobileKeyTransportTest {
     fun `a server attestation refusal is typed and tells the provider`() = runBlocking {
         val stub = StubServer(start)
         stub.failNextToken(401, "ATTESTATION_FAILED")
-        val provider = RecordingProvider(AttestationPayload.Debug("c"))
+        val provider = RecordingProvider(AttestationPayload.PlayIntegrity("c"))
         val transport = transport(stub, provider)
         val error = assertFailsWith<AttestationException> { transport.send(journeyRequest()) }
         assertEquals("ATTESTATION_FAILED", error.code); assertEquals(401, error.status); assertEquals("req-1", error.requestId)
@@ -314,7 +314,7 @@ class MobileKeyTransportTest {
     fun `a disabled mobile channel is typed`() = runBlocking {
         val stub = StubServer(start)
         stub.failNextNonce(403, "MOBILE_CHANNEL_DISABLED")
-        assertFailsWith<MobileChannelDisabledException> { transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()) }
+        assertFailsWith<MobileChannelDisabledException> { transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()) }
         Unit
     }
 
@@ -322,7 +322,7 @@ class MobileKeyTransportTest {
     fun `a mint response the sdk cannot read is malformed`() = runBlocking {
         val stub = StubServer(start)
         stub.garbleNextToken()
-        assertFailsWith<MalformedResponseException> { transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()) }
+        assertFailsWith<MalformedResponseException> { transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()) }
         Unit
     }
 
@@ -343,7 +343,7 @@ class MobileKeyTransportTest {
         for (c in cases) {
             val stub = StubServer(start)
             if (c.route == "nonce") stub.failNextNonce(c.status, c.code) else stub.failNextToken(c.status, c.code)
-            val error = try { transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()); null } catch (e: LensJourneyException) { e }
+            val error = try { transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()); null } catch (e: LensJourneyException) { e }
             assertNotNull(error, c.code)
             assertTrue(c.type.isInstance(error), "${c.code}: ${error::class}")
             assertEquals(c.code, error.code)
@@ -356,7 +356,7 @@ class MobileKeyTransportTest {
     fun `an expires_at with milliseconds is read`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 3_600_000)
         val clock = AtomicLong(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")), clock = clock)
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), clock = clock)
         transport.send(journeyRequest())
         clock.set(start + 3_600_000 - 299_000)
         transport.send(journeyRequest())
@@ -373,7 +373,7 @@ class MobileKeyTransportTest {
         for (reply in replies) {
             val stub = StubServer(start)
             stub.replyToNextToken(reply)
-            assertFailsWith<MalformedResponseException>(reply.toString()) { transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()) }
+            assertFailsWith<MalformedResponseException>(reply.toString()) { transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()) }
         }
         Unit
     }
@@ -383,7 +383,7 @@ class MobileKeyTransportTest {
         val stub = StubServer(start)
         stub.useLegacyEnvelope()
         stub.rejectJourneyToken("token-1", "INSTALL_TOKEN_INVALID")
-        assertEquals(200, transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest()).status)
+        assertEquals(200, transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest()).status)
         assertEquals(2, stub.mintCount)
     }
 
@@ -391,7 +391,7 @@ class MobileKeyTransportTest {
     fun `the mobile key is never sent on journey calls and the token never on mint calls`() = runBlocking {
         val stub = StubServer(start)
         stub.rejectJourneyToken("token-1", "INSTALL_TOKEN_INVALID")
-        transport(stub, RecordingProvider(AttestationPayload.Debug("c"))).send(journeyRequest())   // mint, 401, re-mint, 200
+        transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c"))).send(journeyRequest())   // mint, 401, re-mint, 200
         assertEquals(6, stub.calls.size)
         for (call in stub.calls) {
             if (call.path == nonceRoute || call.path == tokenRoute) {
@@ -408,7 +408,7 @@ class MobileKeyTransportTest {
     fun `a failed refresh is not retried on every call for thirty seconds`() = runBlocking {
         val stub = StubServer(start, lifetimeMillis = 3_600_000)
         val clock = AtomicLong(start)
-        val transport = transport(stub, RecordingProvider(AttestationPayload.Debug("c")), clock = clock)
+        val transport = transport(stub, RecordingProvider(AttestationPayload.PlayIntegrity("c")), clock = clock)
         transport.send(journeyRequest())
         clock.set(start + 3_600_000 - 200_000)
         stub.failNextNonce(503)
@@ -499,15 +499,8 @@ class MobileKeyTransportTest {
     @Test
     fun `payloads and requests do not print their secrets`() {
         val request = TransportRequest("POST", "/x", mapOf("X-API-Key" to "cspk_live_abc123", "X-CS-Install-Token" to "tok-secret"), "body".encodeToByteArray())
-        val text = listOf(request, AttestationPayload.Debug("chal-secret"), AttestationPayload.PlayIntegrity("pi-secret"), AttestationPayload.AppAttest("key-secret", byteArrayOf(1))).joinToString(" ") { it.toString() }
+        val text = listOf(request, AttestationPayload.PlayIntegrity("chal-secret"), AttestationPayload.PlayIntegrity("pi-secret"), AttestationPayload.AppAttest("key-secret", byteArrayOf(1))).joinToString(" ") { it.toString() }
         for (secret in listOf("cspk_live_abc123", "tok-secret", "chal-secret", "pi-secret", "key-secret")) assertFalse(text.contains(secret), secret)
-    }
-
-    // debug provider
-
-    @Test
-    fun `the debug provider echoes the challenge and nothing else`() = runBlocking {
-        assertEquals(AttestationPayload.Debug("abc"), DebugAttestationProvider().attest("abc", "install-id-000001"))
     }
 
     // through the real LensJourney
@@ -525,7 +518,7 @@ class MobileKeyTransportTest {
 
     // helpers
 
-    private fun config(key: String, provider: AttestationProvider = DebugAttestationProvider(), store: InstallIdStore = InMemoryInstallIdStore()) =
+    private fun config(key: String, provider: AttestationProvider = TestProvider(), store: InstallIdStore = InMemoryInstallIdStore()) =
         MobileKeyConfig(key, "https://shop.example.com", provider, store)
 
     private fun transport(stub: StubServer, provider: AttestationProvider, store: InstallIdStore = InMemoryInstallIdStore(), clock: AtomicLong = AtomicLong(start)) =
@@ -546,6 +539,11 @@ private class RecordingProvider(private val payload: AttestationPayload) : Attes
     override suspend fun attestationAccepted(installId: String) { accepted += installId }
     override suspend fun attestationRejected(installId: String) { rejected += installId }
     override suspend fun installIdReplaced(oldInstallId: String) { replaced += oldInstallId }
+}
+
+/** An ordinary app provider: a Play Integrity token. */
+private class TestProvider : AttestationProvider {
+    override suspend fun attest(challenge: String, installId: String): AttestationPayload = AttestationPayload.PlayIntegrity("test-integrity-token")
 }
 
 private class ThrowingProvider(private val error: Exception) : AttestationProvider {

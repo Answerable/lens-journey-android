@@ -63,11 +63,6 @@ sealed class AttestationPayload {
     data class PlayIntegrity(val token: String) : AttestationPayload() {
         override fun toString() = "AttestationPayload.PlayIntegrity(<redacted>)"
     }
-
-    /** Staging and test servers only. A production server refuses it. */
-    data class Debug(val challenge: String) : AttestationPayload() {
-        override fun toString() = "AttestationPayload.Debug(<redacted>)"
-    }
 }
 
 private fun ByteArray?.contentEqualsNullable(other: ByteArray?) = if (this == null || other == null) this == other else contentEquals(other)
@@ -92,12 +87,4 @@ interface AttestationProvider {
 
     /** The transport started a new install (a new install id) because the server will not attest this one again. Drop everything kept for [oldInstallId]. */
     suspend fun installIdReplaced(oldInstallId: String) {}
-}
-
-/**
- * Staging-only. It sends the server's challenge back unsigned. A production VARAi server refuses a `debug` binding at issue time and
- * at use time, so this provider can only ever work against staging, test or development servers. Never ship it in a release build.
- */
-class DebugAttestationProvider : AttestationProvider {
-    override suspend fun attest(challenge: String, installId: String): AttestationPayload = AttestationPayload.Debug(challenge)
 }
